@@ -26,9 +26,13 @@ android {
             // own .so files: without this block the app is packaged as a universal APK containing
             // every ABI, which is why this mirrors the :shared setting and reads the same
             // -PdiplyAbiFilters property.
+            //
+            // In the Kotlin DSL abiFilters is a MutableSet property rather than the varargs method
+            // the Groovy DSL exposes, so it is populated in place instead of called.
             val abiOverride = providers.gradleProperty("diplyAbiFilters")
                 .getOrElse("arm64-v8a,armeabi-v7a,x86_64")
-            abiFilters(*abiOverride.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toTypedArray())
+            abiFilters.clear()
+            abiFilters.addAll(abiOverride.split(",").map { it.trim() }.filter { it.isNotEmpty() })
         }
     }
 
