@@ -20,6 +20,16 @@ android {
         versionCode = 30
         versionName = "0.2.11"
 
+        ndk {
+            // The application module is what actually decides which ABIs land in the APK. The
+            // filter also exists in :shared, but a library's abiFilters only narrow the library's
+            // own .so files: without this block the app is packaged as a universal APK containing
+            // every ABI, which is why this mirrors the :shared setting and reads the same
+            // -PdiplyAbiFilters property.
+            val abiOverride = providers.gradleProperty("diplyAbiFilters")
+                .getOrElse("arm64-v8a,armeabi-v7a,x86_64")
+            abiFilters(*abiOverride.split(",").map { it.trim() }.filter { it.isNotEmpty() }.toTypedArray())
+        }
     }
 
 

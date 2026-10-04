@@ -73,11 +73,35 @@ jobs:
           unzip -l "${{ matrix.apk }}" | grep 'lib/' || true
           unzip -l "${{ matrix.apk }}" | grep 'lib/' | grep -o 'lib/[a-z0-9_-]*/' | sort -u
 
-      - name: Verify minSdk in the built APK
+      - name: Verify the APK really targets this ABI and API level
         run: |
           set -euo pipefail
-          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "${{ matrix.apk }}" \
-            | grep -E "sdkVersion|targetSdkVersion|native-code"
+          apk="${{ matrix.apk }}"
+
+          # The whole point of the matrix: this APK must contain the requested ABI and nothing
+          # else. A universal APK would still install on an x86_64 head unit but would be twice
+          # the size and would hide a broken filter, so assert instead of printing.
+          abis=$(unzip -l "$apk" | grep -o 'lib/[a-z0-9_-]*/' | sort -u | sed 's#lib/##; s#/$##')
+          echo "packaged ABIs: $abis"
+          expected="${{ matrix.abi }}" | tr ',' '\n' | sort -u
+          if [ "$abis" != "$expected" ]; then
+            echo "::error::expected ABIs [$expected] but packaged [$abis]"
+            exit 1
+          fi
+
+          # minSdk has to be 26 or the APK is useless on the head units this targets.
+          # aapt2 badging prints targetSdkVersion but omits sdkVersion when it equals the
+          # compile-time default, so the manifest is read as the source of truth.
+          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          "$aapt2" dump badging "$apk" | grep -E "targetSdkVersion|native-code"
+          minsdk=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk" \
+            | grep -A2 "uses-sdk" | grep -o 'minSdkVersion.*0x[0-9a-f]*' | head -1 \
+            | grep -o '0x[0-9a-f]*' || true)
+          echo "minSdkVersion: ${minsdk:-unknown}"
+          if [ "$minsdk" != "0x1a" ]; then
+            echo "::error::expected minSdkVersion 26 (0x1a) but found ${minsdk:-unknown}"
+            exit 1
+          fi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
