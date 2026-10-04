@@ -258,7 +258,7 @@ object AirPlayPersistence {
      * Wi-Fi P2P cannot be used below Android 10: configuring a P2P group with an SSID and WPA2
      * passphrase only arrived in API 29, and CarPlay needs both. LocalOnlyHotspot is dropped
      * because it was never the default and cannot hand out a stable SSID on old head units.
-     * Both fall back to MANUAL_HOTSPOT, where the driver runs the hotspot. Wired USB CarPlay
+     * Both fall back to MANUAL, where the driver runs the hotspot. Wired USB CarPlay
      * needs none of this and is unaffected.
      */
     fun loadWirelessHotspotMode(context: Context): WirelessHotspotMode {
@@ -281,8 +281,8 @@ object AirPlayPersistence {
     /** The mode [mode] degrades to on this firmware; see [loadWirelessHotspotMode]. */
     fun supportedHotspotMode(mode: WirelessHotspotMode): WirelessHotspotMode = when {
         mode == WirelessHotspotMode.WIFI_P2P &&
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> WirelessHotspotMode.MANUAL_HOTSPOT
-        mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> WirelessHotspotMode.MANUAL_HOTSPOT
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> WirelessHotspotMode.MANUAL
+        mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> WirelessHotspotMode.MANUAL
         else -> mode
     }
 
