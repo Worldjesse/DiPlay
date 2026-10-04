@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
 import android.util.Log
+import androidx.annotation.RequiresApi
 import java.security.MessageDigest
 
 /** Ordinary-app IPC to the real stock receiver. No shell, local socket or permission grant. */
@@ -40,6 +41,18 @@ internal class BydStandaloneHudOutput private constructor(context: Context) {
     companion object {
         private const val TAG = "BYD-Standalone-Live"
         private val TARGET = ComponentName("com.byd.clusterdebug", "com.byd.clusterdebug.BroadcastReceiverCAN")
+
+        /** The DiLink 5.1 firmware this output was validated on. */
+        private const val EXPECTED_FINGERPRINT =
+            "BYD-AUTO/IVI/IVI:13/TP1A.220624.014/eng.build20260722.221155:user/release-keys"
+        private const val EXPECTED_VERSION_CODE = 10601004L
+        private const val EXPECTED_SIGNER_SHA256 =
+            "efe3ca8ada0d10c655c3df9910ad2ebc121a47d9a6358434eb24074309933efc"
+        private val ALLOWED_PACKAGES = setOf(
+            "com.andrerinas.headunitrevived", "com.shihab.diplay",
+            "com.andrerinas.headunitrevived.bydhudtest", "com.shihab.diplay.hudtest",
+        )
+
         @Volatile var syntheticHold = false
 
         fun create(context: Context): BydStandaloneHudOutput? =
@@ -47,22 +60,31 @@ internal class BydStandaloneHudOutput private constructor(context: Context) {
 
         /** Enable production and diagnostic packages only on the physically tested firmware. */
         fun available(context: Context): Boolean {
-            if (Build.VERSION.SDK_INT < 28 || context.packageName !in setOf(
-                    "com.andrerinas.headunitrevived", "com.shihab.diplay",
-                    "com.andrerinas.headunitrevived.bydhudtest", "com.shihab.diplay.hudtest")) return false
-            if (Build.FINGERPRINT != "BYD-AUTO/IVI/IVI:13/TP1A.220624.014/eng.build20260722.221155:user/release-keys") return false
-            return runCatching {
-                val manager = context.packageManager
-                val info = manager.getPackageInfo(TARGET.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                val receiver = manager.getReceiverInfo(TARGET, 0)
-                val signers = info.signingInfo?.apkContentsSigners ?: return false
-                info.versionCodeCompat() == 10601004L &&
-                    info.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM != 0 &&
-                    receiver.enabled && receiver.exported && receiver.permission.isNullOrEmpty() &&
-                    signers.size == 1 && MessageDigest.getInstance("SHA-256").digest(signers[0].toByteArray())
-                        .joinToString("") { "%02x".format(it.toInt() and 255) } ==
-                        "efe3ca8ada0d10c655c3df9910ad2ebc121a47d9a6358434eb24074309933efc"
-            }.getOrDefault(false)
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+            if (context.packageName !in ALLOWED_PACKAGES) return false
+            if (Build.FINGERPRINT != EXPECTED_FINGERPRINT) return false
+            return runCatching { matchesTestedReceiver(context) }.getOrDefault(false)
+        }
+
+        /**
+         * The signature, version and receiver checks that need API 28.
+         *
+         * Split out from [available] so the API level requirement is declared once, rather than
+         * relying on the caller's early return to satisfy the platform check. Everything here
+         * inspects signing metadata that only exists from Android 9 onwards, which matches the
+         * DiLink 5 firmware this path was validated on.
+         */
+        @RequiresApi(Build.VERSION_CODES.P)
+        private fun matchesTestedReceiver(context: Context): Boolean {
+            val manager = context.packageManager
+            val info = manager.getPackageInfo(TARGET.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
+            val receiver = manager.getReceiverInfo(TARGET, 0)
+            val signers = info.signingInfo?.apkContentsSigners ?: return false
+            return info.versionCodeCompat() == EXPECTED_VERSION_CODE &&
+                info.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM != 0 &&
+                receiver.enabled && receiver.exported && receiver.permission.isNullOrEmpty() &&
+                signers.size == 1 && MessageDigest.getInstance("SHA-256").digest(signers[0].toByteArray())
+                    .joinToString("") { "%02x".format(it.toInt() and 255) } == EXPECTED_SIGNER_SHA256
         }
 
         /**

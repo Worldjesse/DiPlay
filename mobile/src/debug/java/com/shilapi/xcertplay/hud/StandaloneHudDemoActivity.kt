@@ -95,6 +95,12 @@ class StandaloneHudDemoActivity : Activity() {
         }
         check(receiverVersion == 10601004L) { "Different stock receiver version" }
         check(info.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM != 0)
+        // SigningInfo arrived in API 28. The receiver verified here is a DiLink 5 stock app, which
+        // only exists on Android 9+, so below 28 there is nothing meaningful to verify against and
+        // the guard fails loudly rather than skipping the signature check this screen exists for.
+        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            "Receiver signature verification needs Android 9 or newer"
+        }
         val certs = info.signingInfo!!.apkContentsSigners
         check(certs.size == 1 && MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) } ==
