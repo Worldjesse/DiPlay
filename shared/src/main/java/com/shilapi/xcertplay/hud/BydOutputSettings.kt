@@ -127,6 +127,19 @@ object BydOutputSettings {
     fun navigationAvailable(context: Context): Boolean =
         VehiclePlatforms.current(context).navigationOutputAvailable(context)
 
+    /** Whether the head unit has a BYD navigation receiver or is a BYD head unit, so settings can show navigation/map options. */
+    fun available(context: Context): Boolean =
+        navigationAvailable(context) ||
+            installed(context, "com.byd.carsettings") ||
+            installed(context, "com.byd.appmgr") ||
+            installed(context, "com.byd.deviceinfo") ||
+            installed(context, "com.byd.service") ||
+            android.os.Build.FINGERPRINT.contains("BYD", ignoreCase = true) ||
+            android.os.Build.BRAND.contains("BYD", ignoreCase = true) ||
+            android.os.Build.MANUFACTURER.contains("BYD", ignoreCase = true) ||
+            android.os.Build.PRODUCT.contains("BYD", ignoreCase = true) ||
+            android.os.Build.DEVICE.contains("BYD", ignoreCase = true)
+
     private fun installed(context: Context, pkg: String): Boolean =
         runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
 
