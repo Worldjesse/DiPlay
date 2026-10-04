@@ -10,6 +10,10 @@ Requirements: JDK 25, Android SDK 37, NDK 28.2.13676358 and the included Gradle 
 
 The resulting source-only APK contains no accessory identity. Standalone CarPlay requires runtime authentication provisioning. Tests generate synthetic identities at runtime; no test private-key files are tracked.
 
+For the full local procedure, including how to build one architecture at a time, verify the
+packaged identity and publish the result to a release, see
+[Standalone car package](STANDALONE_BUILD.md).
+
 ## Local release packaging
 
 Provide an external asset directory using `DIPLAY_AUTH_ASSETS_DIR`. The directory must contain exactly the intended runtime files under `offline-mfi/identity.pk8` and `offline-mfi/certificate.p7b`. Neither file belongs in Git. The build permits those two files only when this explicit input is set and rejects unexpected credential containers elsewhere in APK assets.

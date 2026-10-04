@@ -52,6 +52,13 @@ These seats run Android 8.1 on Intel x86, so:
   implementing this means reverse-engineering a real Lemon head unit and filling in
   `GwmLemonPlatform`.
 
+## Published packages
+
+The APKs attached to a release are **source-only**: they install and run, but they carry no
+accessory identity, so the iPhone will not complete CarPlay pairing with them. This is deliberate —
+the identity is an Apple-issued MFi credential and is kept out of CI. A package that does pair is
+built locally; see [Standalone car package](STANDALONE_BUILD.md).
+
 ## Known limitations
 
 - Some units stutter, particularly under higher video load. A 2.4 GHz link alone does not prove the cause: interference, firmware and decoder stalls can all contribute. Try Default icons, 30 fps and a lower resolution, then attach a report.
