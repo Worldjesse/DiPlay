@@ -16,7 +16,9 @@ android {
             // because NDK r27 dropped 32-bit x86 and r28 is the pinned default here.
             def abiOverride = providers.gradleProperty('diplyAbiFilters')
                 .getOrElse('arm64-v8a,armeabi-v7a,x86_64')
-            abiFilters abiOverride.split(',').collect { it.trim() }.findAll { !it.isEmpty() }
+            // abiFilters is a varargs method, so the parsed list has to be spread with '*'.
+            // Passing the list itself reaches AGP as a single List argument and fails to resolve.
+            abiFilters(*abiOverride.split(',').collect { it.trim() }.findAll { !it.isEmpty() })
         }
 
         externalNativeBuild {
