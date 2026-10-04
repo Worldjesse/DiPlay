@@ -96,22 +96,33 @@ jobs:
 
           # minSdk has to be 26 or the APK is useless on the head units this targets.
           # aapt2 badging omits sdkVersion whenever it matches the compile-time default, so the
-          # manifest itself is read. The uses-sdk element is printed on failure: guessing at the
-          # xmltree layout is how the earlier version of this step reported "unknown" forever.
-          #
-          # The value is the last hex on the attribute line, not the first: the attribute's own
-          # resource id (minSdkVersion(0x0101020c)) is hex too, and an explicit type marker
-          # ((type 0x10)0x1a) adds another. Verified locally against all three shapes.
+          # manifest is read instead. The uses-sdk element is printed on failure, which is what
+          # showed the real format in the first place: aapt2 writes the value in decimal here
+          # (minSdkVersion(0x0101020c)=26) even though the attribute id is hex.
           aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           "$aapt2" dump badging "$apk" | grep -E "targetSdkVersion|native-code"
           manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
-          minsdk=$(printf '%s\n' "$manifest" \
+
+          # Isolate the attribute, drop its own resource id, then normalise decimal or hex to
+          # decimal. Verified locally against =26, =0x1a, =(type 0x10)0x1a, ="26" and ="0x1a".
+          raw=$(printf '%s\n' "$manifest" \
             | tr -d '\r' \
             | grep -oE 'minSdkVersion\([^)]*\)[[:space:]]*=[^\n]*' \
-            | grep -oE '0x[0-9a-fA-F]+' | tail -1 || true)
+            | head -1 \
+            | sed 's/.*=[[:space:]]*//' \
+            | tr -d '"' \
+            | sed 's/^(type 0x[0-9a-fA-F]*)//' \
+            | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)$' || true)
+          minsdk=$(
+            value=$(printf '%s' "$raw" | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)' | head -1 || true)
+            case "$value" in
+              0x*|0X*) printf '%d' "$value" ;;
+              *) printf '%s' "$value" ;;
+            esac
+          )
           echo "minSdkVersion: ${minsdk:-not found}"
-          if [ "$minsdk" != "0x1a" ]; then
-            echo "::error::expected minSdkVersion 26 (0x1a) but found ${minsdk:-not found}"
+          if [ "$minsdk" != "26" ]; then
+            echo "::error::expected minSdkVersion 26 but found ${minsdk:-not found}"
             echo "uses-sdk element follows:"
             printf '%s\n' "$manifest" | grep -A4 'uses-sdk' | head -12
             exit 1
