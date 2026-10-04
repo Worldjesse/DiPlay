@@ -50,6 +50,7 @@ import com.shilapi.xcertplay.network.CarHotspotTethering
 import com.shilapi.xcertplay.network.WifiP2pChannels
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.transport.EvChargingConnectors
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -629,7 +630,7 @@ class DiPlayActivity : ComponentActivity() {
     private fun bydAdbSettings(parent: LinearLayout) {
         if (AirPlayPersistence.loadWirelessHotspotMode(this) != WirelessHotspotMode.MANUAL) return
         if (!CarHotspotSetup.isBydHeadUnit(this)) {
-            Log.i("DiPlay-Hotspot", "settings hidden: BYD head unit not detected")
+            Log.i("DiPlay-Hotspot", "settings hidden: not a supported ADB platform (${VehiclePlatforms.current(this).id})")
             return
         }
         val controls = column().apply { visibility = View.GONE }
@@ -829,16 +830,23 @@ class DiPlayActivity : ComponentActivity() {
 
     private fun wirelessLinkControls(parent: LinearLayout) {
         val mode = if (pendingCarHotspotSetup) WirelessHotspotMode.MANUAL else AirPlayPersistence.loadWirelessHotspotMode(this)
+        // Wi-Fi Direct needs API 29: only then can a P2P group be given the SSID and WPA2
+        // passphrase CarPlay requires. On Android 8 head units the option is hidden rather than
+        // offered and silently downgraded, so the driver is not left wondering why it never works.
         val modes = listOf(WirelessHotspotMode.MANUAL, WirelessHotspotMode.WIFI_P2P)
-        val titles = listOf(getString(R.string.built_in_car_hotspot), getString(R.string.wifi_direct))
-        val descriptions = listOf(
-            getString(R.string.hotspot_mode_manual_desc),
-            getString(R.string.hotspot_mode_p2p_desc)
-        )
+            .filter { AirPlayPersistence.hotspotModeSupported(it) }
         val wide = resources.configuration.screenWidthDp >= 850
         val choices = if (wide) row().apply { gravity = Gravity.TOP } else column()
         parent.addView(choices)
-        modes.forEachIndexed { index, candidate ->
+        modes.forEach { candidate ->
+            val index = listOf(
+                WirelessHotspotMode.MANUAL, WirelessHotspotMode.WIFI_P2P,
+            ).indexOf(candidate)
+            val titles = listOf(getString(R.string.built_in_car_hotspot), getString(R.string.wifi_direct))
+            val descriptions = listOf(
+                getString(R.string.hotspot_mode_manual_desc),
+                getString(R.string.hotspot_mode_p2p_desc)
+            )
             val option = column()
             choices.addView(option, if (wide) LinearLayout.LayoutParams(0, -2, 1f).apply {
                 if (index > 0) marginStart = dp(16)
@@ -853,6 +861,11 @@ class DiPlayActivity : ComponentActivity() {
                 }
             }, matchButton(12, 60))
             option.addView(label(descriptions[index], 15, MUTED).apply { setPadding(0, dp(6), 0, dp(12)) })
+        }
+        if (modes.size < 2) {
+            parent.addView(label(getString(R.string.hotspot_mode_p2p_needs_android_10), 15, MUTED).apply {
+                setPadding(0, dp(6), 0, dp(12))
+            })
         }
         if (mode == WirelessHotspotMode.MANUAL) {
             parent.addView(label(getString(R.string.hotspot_setup), 22, TEXT, true))

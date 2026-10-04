@@ -252,24 +252,42 @@ object AirPlayPersistence {
             .apply()
     }
 
+    /**
+     * The stored mode, corrected to one this firmware can actually run.
+     *
+     * Wi-Fi P2P cannot be used below Android 10: configuring a P2P group with an SSID and WPA2
+     * passphrase only arrived in API 29, and CarPlay needs both. LocalOnlyHotspot is dropped
+     * because it was never the default and cannot hand out a stable SSID on old head units.
+     * Both fall back to MANUAL_HOTSPOT, where the driver runs the hotspot. Wired USB CarPlay
+     * needs none of this and is unaffected.
+     */
     fun loadWirelessHotspotMode(context: Context): WirelessHotspotMode {
         val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val stored = prefs.getString(KEY_WIRELESS_HOTSPOT_MODE, null)
         val mode = WirelessHotspotMode.entries.firstOrNull { it.name == stored }
             ?: WirelessHotspotMode.MANUAL
-        val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT ||
-            (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q && mode == WirelessHotspotMode.WIFI_P2P)
-        ) WirelessHotspotMode.MANUAL else mode
+        val supported = supportedHotspotMode(mode)
         if (stored != supported.name) saveWirelessHotspotMode(context, supported)
         return supported
     }
 
     fun saveWirelessHotspotMode(context: Context, mode: WirelessHotspotMode) {
-        val supported = if (mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT) WirelessHotspotMode.MANUAL else mode
+        val supported = supportedHotspotMode(mode)
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
             .putString(KEY_WIRELESS_HOTSPOT_MODE, supported.name)
             .apply()
     }
+
+    /** The mode [mode] degrades to on this firmware; see [loadWirelessHotspotMode]. */
+    fun supportedHotspotMode(mode: WirelessHotspotMode): WirelessHotspotMode = when {
+        mode == WirelessHotspotMode.WIFI_P2P &&
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q -> WirelessHotspotMode.MANUAL_HOTSPOT
+        mode == WirelessHotspotMode.LOCAL_ONLY_HOTSPOT -> WirelessHotspotMode.MANUAL_HOTSPOT
+        else -> mode
+    }
+
+    /** Whether [mode] is the mode this firmware will actually run, rather than a downgrade. */
+    fun hotspotModeSupported(mode: WirelessHotspotMode): Boolean = supportedHotspotMode(mode) == mode
 
     fun loadWifiP2pPreferredChannel(context: Context): Int = runCatching {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)

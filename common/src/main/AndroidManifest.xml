@@ -6,10 +6,20 @@
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- The typed foreground-service permissions arrived in Android 14. Android 8 head units
+         ignore unknown permissions, and DiPlaySessionService already falls back to the two-argument
+         startForeground below API 29, so these are declared for modern firmware only. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"
+        tools:ignore="ProtectedPermissions" />
     <!-- Optional: the dashboard map as a card over the home screen. -->
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <!-- Optional, owner-enabled Usage Access for the verified DiLink 5.1 cluster profile. -->
@@ -17,6 +27,13 @@
     <!-- The centre card also follows whichever launcher is the default home. -->
     <queries>
         <package android:name="com.byd.carsettings" />
+        <!-- GWM Lemon seats: Harman and iFlytek HiLife launcher/settings packages, used only to
+             recognise the head unit. Absent packages are simply not matched. -->
+        <package android:name="com.gwm.life.launcher" />
+        <package android:name="com.gwm.life" />
+        <package android:name="com.gwm.harman.launcher" />
+        <package android:name="com.harman.android.infotainment" />
+        <package android:name="com.iflytek.vehicle.oshi" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.HOME" />

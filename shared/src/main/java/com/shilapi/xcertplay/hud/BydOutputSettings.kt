@@ -2,6 +2,7 @@ package com.shilapi.xcertplay.hud
 
 import android.content.Context
 import com.shilapi.xcertplay.transport.EvChargingConnectors
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 
 /**
  * One user switch for BYD navigation output. On the tested car the windshield HUD mirrors what the
@@ -102,12 +103,16 @@ object BydOutputSettings {
     fun setLowChargePercent(context: Context, percent: Int) =
         prefs(context).edit().putInt(KEY_LOW_CHARGE_PERCENT, percent).apply()
 
-    /** Whether the head unit has a BYD navigation receiver. This says nothing about ADB vehicle data. */
+    /**
+     * Whether the head unit has a navigation receiver DiPlay can drive. This says nothing about
+     * ADB vehicle data.
+     *
+     * Routed through [VehiclePlatforms] so a non-BYD head unit is never offered BYD navigation
+     * settings, and so a new platform only has to answer for itself. [BydPlatform] owns the raw
+     * probe, which is why this is a plain delegation and not a second copy of the check.
+     */
     fun navigationAvailable(context: Context): Boolean =
-        BydStandaloneHudOutput.available(context) || installed(context, "com.byd.amapservice") || installed(context, "com.ts.car.someip.service")
-
-    private fun installed(context: Context, pkg: String): Boolean =
-        runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
+        VehiclePlatforms.current(context).navigationOutputAvailable(context)
 
     private fun supportedInSelectedMode(
         context: Context,

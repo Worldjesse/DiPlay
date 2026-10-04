@@ -6,6 +6,7 @@ import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.hud.BydOutputSettings
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 import org.junit.Assert.*
 import org.junit.Before
 import org.junit.Test
@@ -22,6 +23,9 @@ class CarHotspotSetupTest {
     private val context get() = RuntimeEnvironment.getApplication()
 
     @Before fun reset() {
+        // Each test installs a different set of head-unit packages, and the platform is resolved
+        // once per process, so a cached answer from an earlier test would decide this one.
+        VehiclePlatforms.clearCacheForTests()
         context.getSharedPreferences("diplay_car_hotspot", 0).edit().clear().commit()
         context.getSharedPreferences("xcertplay_airplay", 0).edit().clear().commit()
     }

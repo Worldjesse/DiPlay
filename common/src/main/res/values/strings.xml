@@ -545,4 +545,5 @@
     <string name="hotspot_control_failed">The car could not start its hotspot. Open the hotspot in car settings.</string>
     <string name="byd_adb_features">BYD features · needs ADB</string>
     <string name="location_reporting_reconnects">Changing this setting reconnects an active CarPlay session.</string>
+    <string name="hotspot_mode_p2p_needs_android_10">Wi-Fi Direct needs Android 10 or newer on this head unit, so only the built-in car hotspot is offered. Wired USB CarPlay works on every supported version.</string>
 </resources>

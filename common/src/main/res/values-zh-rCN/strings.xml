@@ -545,4 +545,5 @@
     <string name="hotspot_control_failed">车机热点开启失败，请在车机设置中开启。</string>
     <string name="byd_adb_features">比亚迪功能 · 需要 ADB</string>
     <string name="location_reporting_reconnects">更改此设置会重新连接当前 CarPlay 会话。</string>
+    <string name="hotspot_mode_p2p_needs_android_10">本车机的 Wi-Fi Direct 需要 Android 10 及以上，因此只提供内置热点方式。有线 USB CarPlay 在所有支持的版本上均可使用。</string>
 </resources>

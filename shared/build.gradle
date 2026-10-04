@@ -6,22 +6,30 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        minSdk = 28
+        minSdk = 26
         targetSdk = 37
 
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            // GWM Lemon seats such as the VV6/VV7 run Harman/HiLife on Intel x86, so x86_64 is a
+            // first-class target here, not an afterthought. Override with -PdiplyAbiFilters=x86
+            // to produce a 32-bit x86 build; that additionally requires NDK r26 or older,
+            // because NDK r27 dropped 32-bit x86 and r28 is the pinned default here.
+            def abiOverride = providers.gradleProperty('diplyAbiFilters')
+                .getOrElse('arm64-v8a,armeabi-v7a,x86_64')
+            abiFilters abiOverride.split(',').collect { it.trim() }.findAll { !it.isEmpty() }
         }
 
         externalNativeBuild {
             ndkBuild {
-                arguments 'APP_PLATFORM=android-28'
+                arguments 'APP_PLATFORM=android-26'
             }
         }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
-    ndkVersion = '28.2.13676358'
+    // A 32-bit x86 override needs an NDK that still ships x86. Kept as a property so the whole
+    // ABI question is answered in one place instead of by editing this file per head unit.
+    ndkVersion = providers.gradleProperty('diplyNdkVersion').getOrElse('28.2.13676358')
     externalNativeBuild {
         ndkBuild {
             path = file('src/main/jni/Android.mk')

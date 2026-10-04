@@ -1,21 +1,34 @@
 package com.shilapi.xcertplay
 
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.provider.Settings
 import android.util.Log
 import com.shilapi.xcertplay.adb.AdbKeys
 import com.shilapi.xcertplay.adb.LocalAdb
-import com.shilapi.xcertplay.hud.BydOutputSettings
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.ManualHotspotValidation
+import com.shilapi.xcertplay.vehicle.BydPlatform
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 
 /** Each grant is requested explicitly from settings; startup never calls this authorization path. */
 internal object CarHotspotSetup {
-    // Older BYD units report QUALCOMM/qti and have no supported navigation-output service.
-    fun isBydHeadUnit(context: Context): Boolean = BydOutputSettings.navigationAvailable(context) || runCatching {
-        context.packageManager.getApplicationInfo("com.byd.carsettings", 0).flags and ApplicationInfo.FLAG_SYSTEM != 0
-    }.getOrDefault(false)
+    /**
+     * Whether the ADB hotspot controls apply to this head unit.
+     *
+     * Identity and navigation capability are different questions, and this one is about identity.
+     * An older Qualcomm/qti BYD unit has no navigation-output service, yet ADB `appops` can still
+     * start its hotspot, so it must keep reaching this setup. [hasNavigationOutput] is the other
+     * question and answers differently on that same unit.
+     */
+    fun isBydHeadUnit(context: Context): Boolean =
+        VehiclePlatforms.current(context).id == BydPlatform.id
+
+    /**
+     * Whether the head unit has a navigation receiver DiPlay can drive, which is a stricter
+     * question than [isBydHeadUnit] and false on both a Qualcomm BYD unit and a Lemon head unit.
+     */
+    fun hasNavigationOutput(context: Context): Boolean =
+        VehiclePlatforms.current(context).navigationOutputAvailable(context)
 
     enum class Permission(val appOp: String) {
         HOTSPOT("WRITE_SETTINGS"), BOOT_LAUNCH("SYSTEM_ALERT_WINDOW");

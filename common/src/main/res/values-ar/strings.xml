@@ -534,4 +534,5 @@
     <string name="hotspot_control_failed">تعذر تشغيل نقطة الاتصال. افتح إعدادات السيارة لتشغيلها.</string>
     <string name="byd_adb_features">ميزات BYD · تتطلب ADB</string>
     <string name="location_reporting_reconnects">يؤدي تغيير هذا الإعداد إلى إعادة اتصال جلسة CarPlay النشطة.</string>
+    <string name="hotspot_mode_p2p_needs_android_10">يتطلب Wi-Fi Direct في وحدة الرأس هذه Android 10 أو أحدث، لذا لا يُعرض إلا نموذج نقطة الاتصال المدمجة. أما CarPlay عبر سلك USB فيعمل على كل الإصدارات المدعومة.</string>
 </resources>

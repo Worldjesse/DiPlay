@@ -1,12 +1,35 @@
 package com.shilapi.xcertplay.hud
 
 import android.content.Context
+import android.util.Log
 import com.shilapi.xcertplay.iap2.wire.Iap2Frame
+import com.shilapi.xcertplay.transport.VehicleSpeedReading
+import com.shilapi.xcertplay.transport.VehicleSpeedSource
+import com.shilapi.xcertplay.transport.VehicleStatusProvider
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
+
+/**
+ * Stands in on a platform with no vehicle-data source. The iPhone then keeps using its own GPS for
+ * dead reckoning and treats the car as one that reports nothing, which is exactly what it does on a
+ * head unit that never answered.
+ */
+private object NoVehicleSpeed : VehicleSpeedSource {
+    override fun start() = Unit
+    override fun stop() = Unit
+    override fun drain(): VehicleSpeedReading? = null
+}
 
 /** Nonblocking boundary between phone control messages and vendor services. */
 object BydNavigationOutputs {
+    private const val TAG = "DiPlay-NavOutput"
     /** Recover a journaled interrupted output when the app opens, even before a phone reconnects. */
     fun onAppOpened(context: Context) {
+        val app = context.applicationContext
+        val platform = VehiclePlatforms.current(app)
+        if (!platform.vehicleDataAvailable(app) && !platform.navigationOutputAvailable(app)) {
+            Log.i(TAG, "no vendor output on ${platform.id}; CarPlay still runs")
+            return
+        }
         if (BydStandaloneHudOutput.available(context)) start(context)
         // Read the battery early, so a reading is ready when CarPlay identifies (see batteryStatus).
         if (BydOutputSettings.batteryToIphoneActive(context)) BydBatteryStatus.start(context)
@@ -37,18 +60,39 @@ object BydNavigationOutputs {
     /**
      * The car's battery for the iPhone's vehicle status; starts reading it over adb. The electric
      * vehicle is declared only once a reading is there (see withVehicleStatusFrom).
+     *
+     * A platform that cannot read vehicle data gets a provider that reports nothing, so the iPhone
+     * treats the car as undeclared and falls back to its own range estimate rather than being told
+     * an electric car with an unknown state.
      */
-    fun batteryStatus(context: Context): com.shilapi.xcertplay.transport.VehicleStatusProvider =
-        BydBatteryStatus.also { it.start(context) }
+    fun batteryStatus(context: Context): VehicleStatusProvider {
+        if (!VehiclePlatforms.current(context).vehicleDataAvailable(context)) {
+            return VehicleStatusProvider { null }
+        }
+        return BydBatteryStatus.also { it.start(context) }
+    }
 
     /** The car's wheel speed and gear for the iPhone's dead reckoning; read over adb while asked for. */
-    fun wheelSpeed(context: Context): com.shilapi.xcertplay.transport.VehicleSpeedSource =
-        BydWheelSpeedSource.attach(context)
+    fun wheelSpeed(context: Context): VehicleSpeedSource {
+        if (!VehiclePlatforms.current(context).vehicleDataAvailable(context)) return NoVehicleSpeed
+        return BydWheelSpeedSource.attach(context)
+    }
+
     /** Whether the car is in P (read over adb), or null when it cannot tell. Blocking. */
-    fun parked(context: Context): Boolean? = BydParkedState.parked(context.applicationContext)
+    fun parked(context: Context): Boolean? {
+        if (!VehiclePlatforms.current(context).vehicleDataAvailable(context)) return null
+        return BydParkedState.parked(context.applicationContext)
+    }
 
     fun start(context: Context) {
         val app = context.applicationContext
+        // A head unit with no navigation receiver has nowhere to send arrows. Every BYD path
+        // below talks to a DiLink service, so on other platforms the whole output stays off
+        // instead of binding a service that does not exist on every reconnect.
+        if (!BydOutputSettings.navigationAvailable(app)) {
+            Log.i(TAG, "navigation output inactive: ${VehiclePlatforms.current(app).id}")
+            return
+        }
         useStandalone = BydStandaloneHudOutput.available(app)
         if (useStandalone) standalone.start { BydStandaloneNavigationBridge.initialize(app) }
         else {

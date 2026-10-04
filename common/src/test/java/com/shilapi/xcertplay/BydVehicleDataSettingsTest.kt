@@ -23,6 +23,7 @@ import com.shilapi.xcertplay.hud.BydVehicleProbeOutcome
 import com.shilapi.xcertplay.transport.VehicleGear
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import com.shilapi.xcertplay.transport.VehicleStatusProvider
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -56,6 +57,9 @@ class BydVehicleDataSettingsTest {
         context.getSharedPreferences("diplay_byd_outputs", 0).edit().clear().commit()
         context.getSharedPreferences("diplay_byd_vehicle_fields", 0).edit().clear().commit()
         BydVehicleFieldStore.clearMemoryForTests()
+        // Each test here simulates a different head unit, and the platform is resolved once per
+        // process, so a cached answer from an earlier test would decide this one.
+        VehiclePlatforms.clearCacheForTests()
     }
 
     @After fun tearDown() {

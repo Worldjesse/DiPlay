@@ -11,6 +11,7 @@ import com.shilapi.xcertplay.adb.LocalAdb
 import com.shilapi.xcertplay.host.R
 import com.shilapi.xcertplay.hud.BydOutputSettings
 import com.shilapi.xcertplay.hud.BydVehicleFieldStore
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 import com.shilapi.xcertplay.network.CarHotspotSettings
 import com.shilapi.xcertplay.orchestration.WirelessHotspotMode
 import org.junit.Assert.*
@@ -36,6 +37,10 @@ class BydAdbSettingsUiTest {
             app.getSharedPreferences(name, 0).edit().clear().commit()
         }
         BydVehicleFieldStore.clearMemoryForTests()
+        // Platform detection is cached per process, and Robolectric reuses one JVM across test
+        // classes. A class that ran earlier may have cached a different head unit, so the cache is
+        // dropped here after the packages below are in place.
+        VehiclePlatforms.clearCacheForTests()
         shadowOf(app.packageManager).removePackage("com.byd.amapservice")
         shadowOf(app.packageManager).installPackage(PackageInfo().apply {
             packageName = "com.byd.carsettings"

@@ -546,4 +546,5 @@
     <string name="hotspot_control_timeout">Час очікування ввімкнення точки доступу минув. Відкрийте налаштування авто.</string>
     <string name="hotspot_control_failed">Не вдалося ввімкнути точку доступу. Відкрийте налаштування авто.</string>
     <string name="byd_adb_features">Функції BYD · потрібен ADB</string>
+    <string name="hotspot_mode_p2p_needs_android_10">Wi-Fi Direct на цьому головному пристрої потребує Android 10 або новішої версії, тому пропонується лише вбудована точка доступу. CarPlay через USB-кабель працює на всіх підтримуваних версіях.</string>
 </resources>

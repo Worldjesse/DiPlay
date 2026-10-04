@@ -11,6 +11,9 @@ android {
 
     defaultConfig {
         applicationId = "com.shilapi.xcertplay"
+        // Stays at 28 on purpose: this module targets Android Automotive OS and depends on
+        // androidx.car.app.automotive, which requires API 29. The old-head-unit target is the
+        // :mobile module, which is down at API 26.
         minSdk = 28
         targetSdk = 37
         versionCode = 1201

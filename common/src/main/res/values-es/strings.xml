@@ -534,4 +534,5 @@
     <string name="hotspot_control_failed">No se pudo iniciar el punto de acceso. Actívalo en los ajustes del coche.</string>
     <string name="byd_adb_features">Funciones BYD · requieren ADB</string>
     <string name="location_reporting_reconnects">Cambiar este ajuste vuelve a conectar la sesión activa de CarPlay.</string>
+    <string name="hotspot_mode_p2p_needs_android_10">Wi-Fi Direct necesita Android 10 o posterior en este equipo, así que solo se ofrece el punto de acceso integrado. CarPlay por cable USB funciona en todas las versiones compatibles.</string>
 </resources>

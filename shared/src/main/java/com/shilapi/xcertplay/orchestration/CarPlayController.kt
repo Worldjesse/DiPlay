@@ -81,6 +81,7 @@ import com.shilapi.xcertplay.transport.LockdownPairingClient
 import com.shilapi.xcertplay.transport.LockdownPairRecord
 import com.shilapi.xcertplay.transport.NcmFunctionDiscovery
 import com.shilapi.xcertplay.transport.NcmUsbBridge
+import com.shilapi.xcertplay.vehicle.VehiclePlatforms
 import java.io.Closeable
 import java.io.IOException
 import java.net.InetAddress
@@ -159,6 +160,15 @@ class CarPlayController(
         require(!config.locationReportingEnabled || locationProvider != null) {
             "A location provider is required when location reporting is enabled"
         }
+        // Logged once per session so a field report says which platform was detected, on which
+        // firmware, without needing a debug build. An unrecognised head unit is normal and not
+        // an error: CarPlay itself is vendor-neutral.
+        val platform = VehiclePlatforms.current(context.applicationContext)
+        Log.i(
+            IphoneCarPlayConfiguration.TAG,
+            "platform=${platform.id} (${platform.describe()}) sdk=${Build.VERSION.SDK_INT} " +
+                "abi=${Build.SUPPORTED_ABIS.joinToString(",")} abi32=${Build.SUPPORTED_32_BIT_ABIS.joinToString(",")}",
+        )
         BydNavigationOutputs.start(context.applicationContext)
         BydNavigationOutputs.setClusterStreamControl(::applyClusterUi)
     }
