@@ -22,6 +22,27 @@ effectively hand them out, and an MFi identity cannot be rotated cheaply once ex
 locally keeps them on one machine that you control. Upstream DiPlay does the same thing: its own
 release APKs are built outside CI, which is why its workflows only ever produce source-only output.
 
+## Risk when reusing an accessory identity
+
+A usable package needs an Apple-issued MFi credential. DiPlay is open source and does not hold an
+Apple certification, so the projects in this community share one identity rather than each applying
+for their own. Two things follow, and both are worth being explicit about.
+
+**This is for your own head unit.** An identity obtained this way is the issuer's, not yours. Using
+it on your own car is the common case and is what the rest of this page covers. Publishing or
+redistributing a package built this way is a different question with a real answer: it is not your
+credential to license, and an MFi identity is expected to be used only by the product it was issued
+for.
+
+**Revocation is collective.** If the credential is judged to be in use outside its intended product,
+the consequence is not confined to one build. The identity can be revoked, and while that would not
+change anything in this repository, it would stop CarPlay pairing for every other build that relies
+on the same identity — including the upstream project. That is a risk to the whole community, not
+only to your install, and it is the main reason to keep any such build to yourself.
+
+If you want no exposure at all, apply for your own MFi certification. It is the only way to get an
+identity that is actually yours.
+
 ## 1. Prerequisites
 
 You need the same toolchain CI uses:
@@ -59,7 +80,26 @@ The repository enforces this: `scripts/check_public_tree.py` runs in every CI jo
 unexpected credential files, and the Gradle build independently refuses to package anything but
 those two exact filenames when `DIPLAY_AUTH_ASSETS_DIR` is set.
 
-## 3. Build
+### Using CI instead of a local toolchain
+
+If you do not have a local Android toolchain, `.github/workflows/build-standalone.yml` does the whole
+build on GitHub. It is `workflow_dispatch` only, so it never runs on its own.
+
+Configure two repository secrets:
+
+| Secret | Content |
+| --- | --- |
+| `MFI_IDENTITY_PK8_BASE64` | `base64 -w0 identity.pk8` |
+| `MFI_CERTIFICATE_P7B_BASE64` | `base64 -w0 certificate.p7b` |
+
+Then run the *Build standalone car-test APKs* workflow. It builds each architecture, moves each
+result aside, verifies the architecture, the API level and that the identity is actually packaged,
+and publishes to the `v0.3.0` release.
+
+The workflow logs the identity's byte size and nothing else, because a log line containing a
+private key is a permanent exposure in a public repository.
+
+## 3. Build locally
 
 ```sh
 cd /path/to/DiPlay

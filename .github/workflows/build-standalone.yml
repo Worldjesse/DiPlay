@@ -1,0 +1,150 @@
+name: Build standalone car-test APKs
+
+# Builds packages that can actually complete CarPlay pairing, for the head units that cannot use a
+# source-only APK. Triggered manually because it needs the accessory identity, which lives in
+# repository secrets rather than in Git.
+#
+# The identity is an Apple-issued MFi credential. Two rules follow from that and are enforced below:
+# it must never be printed to a log, and it must never land in an artifact that outlives the job.
+on:
+  workflow_dispatch:
+    inputs:
+      architectures:
+        description: 'ABIs to build, comma separated'
+        required: false
+        default: 'x86_64,arm64-v8a,armeabi-v7a'
+
+permissions:
+  contents: write
+
+jobs:
+  standalone:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject credential files in public source
+        run: python3 scripts/check_public_tree.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;28.2.13676358
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The identity is written straight to a file and never echoed. It comes from secrets rather
+      # than from the repository, so check_public_tree.py above stays meaningful.
+      - name: Provision the accessory identity
+        env:
+          IDENTITY_PK8: ${{ secrets.MFI_IDENTITY_PK8_BASE64 }}
+          CERTIFICATE_P7B: ${{ secrets.MFI_CERTIFICATE_P7B_BASE64 }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/diplay-auth/offline-mfi"
+          for var in IDENTITY_PK8 CERTIFICATE_P7B; do
+            if [ -z "${!var}" ]; then
+              echo "::error::secret $var is not configured on this repository"
+              exit 1
+            fi
+          done
+          printf '%s' "$IDENTITY_PK8"   | base64 -d > "$RUNNER_TEMP/diplay-auth/offline-mfi/identity.pk8"
+          printf '%s' "$CERTIFICATE_P7B" | base64 -d > "$RUNNER_TEMP/diplay-auth/offline-mfi/certificate.p7b"
+          # Report only sizes. A hash of a private key in a public log is unnecessary exposure.
+          wc -c "$RUNNER_TEMP/diplay-auth/offline-mfi/"*
+
+      - name: Unit tests
+        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest --stacktrace
+
+      - name: Lint
+        run: ./gradlew :mobile:lintDebug --stacktrace
+
+      # One architecture per invocation, each result moved aside. Two assembleDebug runs write the
+      # same output name, so building them in sequence without moving the first result would ship
+      # the second architecture twice under both names.
+      - name: Build and stash each architecture
+        env:
+          DIPLAY_AUTH_ASSETS_DIR: ${{ runner.temp }}/diplay-auth
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          IFS=',' read -r -a abis <<< '${{ inputs.architectures }}'
+          for abi in "${abis[@]}"; do
+            abi=$(echo "$abi" | tr -d '[:space:]')
+            [ -z "$abi" ] && continue
+            echo "=== building $abi ==="
+            ./gradlew :mobile:assembleStandaloneDebug -PdiplyAbiFilters="$abi" --stacktrace
+            target="dist/${abi//[,\/]/_}.apk"
+            mv mobile/build/outputs/apk/debug/mobile-debug.apk "$target"
+            test -f "$target"
+          done
+          ls -l dist
+
+      - name: Verify architecture, API level and packaged identity
+        run: |
+          set -euo pipefail
+          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          for apk in dist/*.apk; do
+            name=$(basename "$apk")
+            abis=$(unzip -l "$apk" | grep -o 'lib/[a-z0-9_-]*/' | sort -u | sed 's#lib/##; s#/$##')
+
+            raw=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk" \
+              | tr -d '\r' \
+              | grep -oE 'minSdkVersion\([^)]*\)[[:space:]]*=[^\n]*' \
+              | head -1 \
+              | sed 's/.*=[[:space:]]*//' \
+              | tr -d '"' \
+              | sed 's/^(type 0x[0-9a-fA-F]*)//' \
+              | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)$' || true)
+            value=$(printf '%s' "$raw" | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)' | head -1 || true)
+            case "$value" in 0x*|0X*) minsdk=$(printf '%d' "$value");; *) minsdk="$value";; esac
+
+            echo "$name -> ABIs[$abis] minSdk[$minsdk]"
+
+            # The identity has to be present and non-empty, or the package cannot pair and the
+            # whole point of this workflow is lost. The size comes from unzip -p output rather than
+            # from parsing a listing, whose row position depends on how many entries matched.
+            id_ok=0
+            for f in identity.pk8 certificate.p7b; do
+              size=$(unzip -p "$apk" "assets/offline-mfi/$f" 2>/dev/null | wc -c)
+              echo "  $f = $size bytes"
+              [ "$size" -gt 0 ] || id_ok=1
+            done
+            if [ "$id_ok" -ne 0 ]; then
+              echo "::error::$name is missing the accessory identity"
+              exit 1
+            fi
+            if [ "$minsdk" != "26" ]; then
+              echo "::error::$name expected minSdk 26, found ${minsdk:-unknown}"
+              exit 1
+            fi
+            # Single-architecture is what a car head unit can actually install.
+            case "$abis" in
+              *,*) echo "::error::$name is a universal APK [$abis]; expected one architecture"; exit 1;;
+            esac
+          done
+          ( cd dist && sha256sum *.apk > SHA256SUMS.txt )
+
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiPlay-standalone-apks
+          path: dist/
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Publish to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.3.0
+          name: DiPlay v0.3.0 — Android 8 and GWM Lemon head units
+          draft: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/*.apk
+            dist/SHA256SUMS.txt
