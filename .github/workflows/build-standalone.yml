@@ -8,11 +8,6 @@ name: Build standalone car-test APKs
 # it must never be printed to a log, and it must never land in an artifact that outlives the job.
 on:
   workflow_dispatch:
-    inputs:
-      architectures:
-        description: 'ABIs to build, comma separated'
-        required: false
-        default: 'x86_64,arm64-v8a,armeabi-v7a'
 
 permissions:
   contents: write
@@ -64,29 +59,25 @@ jobs:
       - name: Lint
         run: ./gradlew :mobile:lintDebug --stacktrace
 
-      # One architecture per invocation, each result moved aside. Two assembleDebug runs write the
-      # same output name, so building them in sequence without moving the first result would ship
-      # the second architecture twice under both names.
+      # Two packages, matching the two head-unit families: Intel x86_64, and ARM (64-bit plus
+      # 32-bit in one APK, because a head unit cannot install a package missing its own ABI).
       #
-      # The asset name carries "standalone" because this release also holds the source-only APKs.
-      # A bare ABI name next to DiPlay-x86_64.apk is easy to grab by mistake, and picking the wrong
-      # one yields an app that installs but never pairs.
-      - name: Build and stash each architecture
+      # The ARM build has to be moved aside before the Intel one starts. Both assembleStandaloneDebug
+      # runs write the same output name, so building them in sequence without moving the first result
+      # would ship the second architecture twice under both names.
+      - name: Build and stash both packages
         env:
           DIPLAY_AUTH_ASSETS_DIR: ${{ runner.temp }}/diplay-auth
         run: |
           set -euo pipefail
           mkdir -p dist
-          IFS=',' read -r -a abis <<< '${{ inputs.architectures }}'
-          for abi in "${abis[@]}"; do
-            abi=$(echo "$abi" | tr -d '[:space:]')
-            [ -z "$abi" ] && continue
-            echo "=== building $abi ==="
-            ./gradlew :mobile:assembleStandaloneDebug -PdiplyAbiFilters="$abi" --stacktrace
-            target="dist/DiPlay-${abi//[,\/]/_}-standalone.apk"
-            mv mobile/build/outputs/apk/debug/mobile-debug.apk "$target"
-            test -f "$target"
-          done
+
+          ./gradlew :mobile:assembleStandaloneDebug -PdiplyAbiFilters=arm64-v8a,armeabi-v7a --stacktrace
+          mv mobile/build/outputs/apk/debug/mobile-debug.apk dist/DiPlay-arm64-armeabi-standalone.apk
+
+          ./gradlew :mobile:assembleStandaloneDebug -PdiplyAbiFilters=x86_64 --stacktrace
+          mv mobile/build/outputs/apk/debug/mobile-debug.apk dist/DiPlay-x86_64-standalone.apk
+
           ls -l dist
 
       - name: Verify architecture, API level and packaged identity
