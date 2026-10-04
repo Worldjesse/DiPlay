@@ -4,6 +4,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Process
@@ -55,7 +56,7 @@ internal class BydStandaloneHudOutput private constructor(context: Context) {
                 val info = manager.getPackageInfo(TARGET.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
                 val receiver = manager.getReceiverInfo(TARGET, 0)
                 val signers = info.signingInfo?.apkContentsSigners ?: return false
-                info.longVersionCode == 10601004L &&
+                info.versionCodeCompat() == 10601004L &&
                     info.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM != 0 &&
                     receiver.enabled && receiver.exported && receiver.permission.isNullOrEmpty() &&
                     signers.size == 1 && MessageDigest.getInstance("SHA-256").digest(signers[0].toByteArray())
@@ -63,5 +64,16 @@ internal class BydStandaloneHudOutput private constructor(context: Context) {
                         "efe3ca8ada0d10c655c3df9910ad2ebc121a47d9a6358434eb24074309933efc"
             }.getOrDefault(false)
         }
+
+        /**
+         * The receiver's version as a Long on every supported API level.
+         *
+         * `getLongVersionCode` only arrived in API 28 and this app now supports API 26, so the
+         * deprecated Int field is read below that. The receiver's version is a plain integer, so
+         * widening it loses nothing here.
+         */
+        private fun PackageInfo.versionCodeCompat(): Long =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) longVersionCode
+            else @Suppress("DEPRECATION") versionCode.toLong()
     }
 }
