@@ -67,6 +67,10 @@ jobs:
       # One architecture per invocation, each result moved aside. Two assembleDebug runs write the
       # same output name, so building them in sequence without moving the first result would ship
       # the second architecture twice under both names.
+      #
+      # The asset name carries "standalone" because this release also holds the source-only APKs.
+      # A bare ABI name next to DiPlay-x86_64.apk is easy to grab by mistake, and picking the wrong
+      # one yields an app that installs but never pairs.
       - name: Build and stash each architecture
         env:
           DIPLAY_AUTH_ASSETS_DIR: ${{ runner.temp }}/diplay-auth
@@ -79,7 +83,7 @@ jobs:
             [ -z "$abi" ] && continue
             echo "=== building $abi ==="
             ./gradlew :mobile:assembleStandaloneDebug -PdiplyAbiFilters="$abi" --stacktrace
-            target="dist/${abi//[,\/]/_}.apk"
+            target="dist/DiPlay-${abi//[,\/]/_}-standalone.apk"
             mv mobile/build/outputs/apk/debug/mobile-debug.apk "$target"
             test -f "$target"
           done
