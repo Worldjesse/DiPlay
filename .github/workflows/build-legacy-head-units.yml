@@ -95,15 +95,25 @@ jobs:
           fi
 
           # minSdk has to be 26 or the APK is useless on the head units this targets.
-          # aapt2 badging prints targetSdkVersion but omits sdkVersion when it equals the
-          # compile-time default, so the manifest is read as the source of truth.
+          # aapt2 badging omits sdkVersion whenever it matches the compile-time default, so the
+          # manifest itself is read. The uses-sdk element is printed on failure: guessing at the
+          # xmltree layout is how the earlier version of this step reported "unknown" forever.
+          #
+          # The value is the last hex on the attribute line, not the first: the attribute's own
+          # resource id (minSdkVersion(0x0101020c)) is hex too, and an explicit type marker
+          # ((type 0x10)0x1a) adds another. Verified locally against all three shapes.
           aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           "$aapt2" dump badging "$apk" | grep -E "targetSdkVersion|native-code"
-          minsdk=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk" \
-            | grep -o 'minSdkVersion[^ ]*="0x[0-9a-f]*"' | grep -o '0x[0-9a-f]*' | head -1 || true)
-          echo "minSdkVersion: ${minsdk:-unknown}"
+          manifest=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk")
+          minsdk=$(printf '%s\n' "$manifest" \
+            | tr -d '\r' \
+            | grep -oE 'minSdkVersion\([^)]*\)[[:space:]]*=[^\n]*' \
+            | grep -oE '0x[0-9a-fA-F]+' | tail -1 || true)
+          echo "minSdkVersion: ${minsdk:-not found}"
           if [ "$minsdk" != "0x1a" ]; then
-            echo "::error::expected minSdkVersion 26 (0x1a) but found ${minsdk:-unknown}"
+            echo "::error::expected minSdkVersion 26 (0x1a) but found ${minsdk:-not found}"
+            echo "uses-sdk element follows:"
+            printf '%s\n' "$manifest" | grep -A4 'uses-sdk' | head -12
             exit 1
           fi
 
