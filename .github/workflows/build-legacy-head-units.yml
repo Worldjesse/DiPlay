@@ -81,9 +81,14 @@ jobs:
           # The whole point of the matrix: this APK must contain the requested ABI and nothing
           # else. A universal APK would still install on an x86_64 head unit but would be twice
           # the size and would hide a broken filter, so assert instead of printing.
+          #
+          # The expected list is built with a pipeline on its own line. Writing
+          # `expected="a,b" | tr ...` would send the assignment into the pipeline's stdin and
+          # leave `expected` unset, which trips `set -u`.
           abis=$(unzip -l "$apk" | grep -o 'lib/[a-z0-9_-]*/' | sort -u | sed 's#lib/##; s#/$##')
+          expected=$(printf '%s' '${{ matrix.abi }}' | tr ',' '\n' | sort -u)
           echo "packaged ABIs: $abis"
-          expected="${{ matrix.abi }}" | tr ',' '\n' | sort -u
+          echo "expected ABIs: $expected"
           if [ "$abis" != "$expected" ]; then
             echo "::error::expected ABIs [$expected] but packaged [$abis]"
             exit 1
@@ -95,8 +100,7 @@ jobs:
           aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
           "$aapt2" dump badging "$apk" | grep -E "targetSdkVersion|native-code"
           minsdk=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk" \
-            | grep -A2 "uses-sdk" | grep -o 'minSdkVersion.*0x[0-9a-f]*' | head -1 \
-            | grep -o '0x[0-9a-f]*' || true)
+            | grep -o 'minSdkVersion[^ ]*="0x[0-9a-f]*"' | grep -o '0x[0-9a-f]*' | head -1 || true)
           echo "minSdkVersion: ${minsdk:-unknown}"
           if [ "$minsdk" != "0x1a" ]; then
             echo "::error::expected minSdkVersion 26 (0x1a) but found ${minsdk:-unknown}"
