@@ -1,0 +1,96 @@
+name: Build legacy-head-unit APKs
+
+# Builds the APKs for the old-head-unit target: Android 8.0+ on ARM, and Intel x86_64 for
+# the GWM Lemon seats (Harman / iFlytek HiLife). Split from android.yml so the matrix stays
+# readable and so a single ABI failing does not hide the others.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Default set. Covers BYD DiLink and every ARM head unit.
+          - name: arm (arm64-v8a, armeabi-v7a)
+            abi: arm64-v8a,armeabi-v7a
+            apk: mobile/build/outputs/apk/debug/mobile-arm64-v8a.apk
+          # GWM Lemon (VV6/VV7 era) and other Intel x86_64 head units.
+          - name: intel-x86_64
+            abi: x86_64
+            apk: mobile/build/outputs/apk/debug/mobile-x86_64.apk
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject credential files in public source
+        run: python3 scripts/check_public_tree.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;28.2.13676358
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # The ABI list is passed as a property rather than by editing shared/build.gradle, so the
+      # same source produces either flavor and the choice is visible in the run log.
+      - name: Show build inputs
+        run: |
+          echo "abiFilters: ${{ matrix.abi }}"
+          echo "minSdk: 26 (Android 8.0)"
+          java -version
+
+      - name: Unit tests
+        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest --stacktrace
+
+      - name: Lint
+        run: ./gradlew :mobile:lintDebug --stacktrace
+
+      - name: Build debug APK for ${{ matrix.abi }}
+        run: ./gradlew :mobile:assembleDebug -PdiplyAbiFilters=${{ matrix.abi }} --stacktrace
+
+      - name: Rename APK to identify its ABI
+        run: |
+          set -euo pipefail
+          src=$(ls mobile/build/outputs/apk/debug/*.apk | head -1)
+          echo "built: $src"
+          cp "$src" "${{ matrix.apk }}"
+          # Prove the ABI actually landed in the APK rather than trusting the Gradle property.
+          unzip -l "${{ matrix.apk }}" | grep 'lib/' || true
+          unzip -l "${{ matrix.apk }}" | grep 'lib/' | grep -o 'lib/[a-z0-9_-]*/' | sort -u
+
+      - name: Verify minSdk in the built APK
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/build-tools/36.0.0/aapt2" dump badging "${{ matrix.apk }}" \
+            | grep -E "sdkVersion|targetSdkVersion|native-code"
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DiPlay-${{ matrix.name }}
+          path: ${{ matrix.apk }}
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-${{ matrix.name }}
+          path: mobile/build/reports/lint-results-debug.html
+          retention-days: 7
