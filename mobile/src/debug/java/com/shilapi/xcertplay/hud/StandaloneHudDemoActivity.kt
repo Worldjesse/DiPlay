@@ -15,6 +15,7 @@ import android.util.Log
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import androidx.annotation.RequiresApi
 import java.security.MessageDigest
 
 /** Parked, finite probe of stock IPC. No shell, socket, SDK privilege or helper. */
@@ -85,22 +86,22 @@ class StandaloneHudDemoActivity : Activity() {
         check(Build.FINGERPRINT == "BYD-AUTO/IVI/IVI:13/TP1A.220624.014/eng.build20260722.221155:user/release-keys") {
             "This test is restricted to the inspected firmware"
         }
+        // The stock receiver is a DiLink 5 app, so it only exists on Android 9+. Everything below
+        // reads signing metadata that arrived in API 28, which is why the requirement is declared
+        // on its own function rather than as a version check inline: an inline check does not
+        // satisfy the platform check, and the guard must fail loudly rather than quietly skipping
+        // the signature verification this screen exists to perform.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
+            throw IllegalStateException("Receiver signature verification needs Android 9 or newer")
+        }
+        verifyStockReceiver()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.P)
+    private fun verifyStockReceiver() {
         val info = packageManager.getPackageInfo(target.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-        // getLongVersionCode needs API 28 and this module builds against minSdk 26, so the
-        // deprecated Int field is read below that. The receiver's version is a plain integer.
-        val receiverVersion = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            info.longVersionCode
-        } else {
-            @Suppress("DEPRECATION") info.versionCode.toLong()
-        }
-        check(receiverVersion == 10601004L) { "Different stock receiver version" }
+        check(info.longVersionCode == 10601004L) { "Different stock receiver version" }
         check(info.applicationInfo!!.flags and ApplicationInfo.FLAG_SYSTEM != 0)
-        // SigningInfo arrived in API 28. The receiver verified here is a DiLink 5 stock app, which
-        // only exists on Android 9+, so below 28 there is nothing meaningful to verify against and
-        // the guard fails loudly rather than skipping the signature check this screen exists for.
-        check(Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            "Receiver signature verification needs Android 9 or newer"
-        }
         val certs = info.signingInfo!!.apkContentsSigners
         check(certs.size == 1 && MessageDigest.getInstance("SHA-256").digest(certs[0].toByteArray())
             .joinToString("") { "%02x".format(it.toInt() and 255) } ==
