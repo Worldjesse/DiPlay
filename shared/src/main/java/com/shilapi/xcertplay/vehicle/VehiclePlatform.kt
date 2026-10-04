@@ -3,6 +3,7 @@ package com.shilapi.xcertplay.vehicle
 import android.content.Context
 import android.content.pm.ApplicationInfo
 import android.os.Build
+import com.shilapi.xcertplay.hud.BydOutputSettings
 
 /**
  * One vehicle platform: the head-unit family DiPlay adapts to.
@@ -111,13 +112,15 @@ object BydPlatform : VehiclePlatform {
             VehiclePlatforms.anyInstalled(context, *NAVIGATION_PACKAGES)
 
     /**
-     * The upstream receiver probe: the standalone DiLink 5 path, or either stock navigation
-     * receiver. This is the raw check, deliberately not routed back through
-     * `BydOutputSettings.navigationAvailable`, which asks the platform registry and would recurse.
+     * The upstream receiver probe, kept as the single copy of this check. It stays in the `hud`
+     * package because `BydStandaloneHudOutput` is internal there; this platform asks that package
+     * rather than duplicating the probe or widening the class's visibility.
+     *
+     * Deliberately not routed back through `BydOutputSettings.navigationAvailable`, which asks the
+     * platform registry and would recurse.
      */
     override fun navigationOutputAvailable(context: Context): Boolean =
-        BydStandaloneHudOutput.available(context) ||
-            VehiclePlatforms.anyInstalled(context, *NAVIGATION_PACKAGES)
+        BydOutputSettings.bydNavigationReceiverAvailable(context)
 
     override fun vehicleDataAvailable(context: Context): Boolean = navigationOutputAvailable(context)
 

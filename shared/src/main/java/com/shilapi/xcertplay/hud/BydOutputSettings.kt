@@ -104,6 +104,19 @@ object BydOutputSettings {
         prefs(context).edit().putInt(KEY_LOW_CHARGE_PERCENT, percent).apply()
 
     /**
+     * The raw BYD receiver probe: the DiLink 5 standalone path, or either stock navigation
+     * receiver package.
+     *
+     * Public and side-effect free so [com.shilapi.xcertplay.vehicle.BydPlatform] can hold the
+     * single copy of this check. `BydStandaloneHudOutput` is internal to this package, so the
+     * probe lives here rather than widening that class's visibility.
+     */
+    fun bydNavigationReceiverAvailable(context: Context): Boolean =
+        BydStandaloneHudOutput.available(context) ||
+            installed(context, "com.byd.amapservice") ||
+            installed(context, "com.ts.car.someip.service")
+
+    /**
      * Whether the head unit has a navigation receiver DiPlay can drive. This says nothing about
      * ADB vehicle data.
      *
@@ -113,6 +126,9 @@ object BydOutputSettings {
      */
     fun navigationAvailable(context: Context): Boolean =
         VehiclePlatforms.current(context).navigationOutputAvailable(context)
+
+    private fun installed(context: Context, pkg: String): Boolean =
+        runCatching { context.packageManager.getPackageInfo(pkg, 0) }.isSuccess
 
     private fun supportedInSelectedMode(
         context: Context,
