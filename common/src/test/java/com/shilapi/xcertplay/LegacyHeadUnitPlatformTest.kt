@@ -62,8 +62,11 @@ class LegacyHeadUnitPlatformTest {
         assertFalse(CarHotspotSetup.hasNavigationOutput(context))
     }
 
-    @Test fun lemonOnIntelX86IsRecognisedFromTheFingerprintAlone() {
-        // No marker package is installed here, so detection can only come from the build fields.
+    @Test fun lemonOnIntelX86IsRecognisedFromTheBuildFieldsAlone() {
+        // Exercises the rule directly, with the build fields passed in. Going through
+        // VehiclePlatforms.current here would only assert Robolectric's own ABI, which is not x86,
+        // so the end-to-end detection is covered by lemonIsRecognisedButOffersNoVendorNavigation
+        // using a marker package instead.
         assertTrue(
             GwmLemonPlatform.isLemon(
                 abis = arrayOf("x86_64", "x86"),
@@ -73,7 +76,6 @@ class LegacyHeadUnitPlatformTest {
                 fingerprint = null,
             ),
         )
-        assertEquals(GwmLemonPlatform, VehiclePlatforms.current(context))
     }
 
     @Test fun armHeadUnitWithAGwmBrandIsNotMistakenForLemon() {
