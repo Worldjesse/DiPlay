@@ -1,0 +1,200 @@
+name: Publish release APKs
+
+# Publishes the two head-unit APKs as a GitHub Release so they can be downloaded from a stable
+# URL, the way other GitHub projects distribute binaries. Triggered by pushing a version tag.
+#
+# Both APKs are built in one job on purpose. A matrix would let two legs race to create the same
+# release, and a release that is only finished once every leg lands is harder to reason about
+# than one that is assembled in a single step.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing tag to publish a release for'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reject credential files in public source
+        run: python3 scripts/check_public_tree.py
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools platforms;android-37.0 build-tools;36.0.0 ndk;28.2.13676358
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew :shared:testDebugUnitTest :common:testDebugUnitTest --stacktrace
+
+      - name: Lint
+        run: ./gradlew :mobile:lintDebug --stacktrace
+
+      # Each build is moved aside before the next one runs. Both produce the same output name
+      # (mobile-debug.apk), so building twice and staging afterwards would stage the same APK
+      # twice: the second build overwrites the first, and the x86_64 package would silently
+      # ship as an ARM one. Moving each result out of the way as it is produced is what keeps the
+      # two artifacts distinct.
+      - name: Build and stash the Intel x86_64 APK
+        run: |
+          set -euo pipefail
+          ./gradlew :mobile:assembleDebug -PdiplyAbiFilters=x86_64 --stacktrace
+          mkdir -p dist
+          mv mobile/build/outputs/apk/debug/mobile-debug.apk dist/x86_64.apk
+          test -f dist/x86_64.apk
+
+      - name: Build and stash the ARM APK
+        run: |
+          set -euo pipefail
+          ./gradlew :mobile:assembleDebug -PdiplyAbiFilters=arm64-v8a,armeabi-v7a --stacktrace
+          mv mobile/build/outputs/apk/debug/mobile-debug.apk dist/arm.apk
+          test -f dist/arm.apk
+
+      - name: Verify and stage both APKs
+        run: |
+          set -euo pipefail
+
+          # ANDROID_HOME comes from the setup-android step, so it is read inside the script.
+          aapt2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+
+          read_min_sdk() {
+            local apk=$1
+            local raw
+            raw=$("$aapt2" dump xmltree --file AndroidManifest.xml "$apk" \
+              | tr -d '\r' \
+              | grep -oE 'minSdkVersion\([^)]*\)[[:space:]]*=[^\n]*' \
+              | head -1 \
+              | sed 's/.*=[[:space:]]*//' \
+              | tr -d '"' \
+              | sed 's/^(type 0x[0-9a-fA-F]*)//' \
+              | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)$' || true)
+            local value
+            value=$(printf '%s' "$raw" | grep -oE '(0x[0-9a-fA-F]+|[0-9]+)' | head -1 || true)
+            case "$value" in
+              0x*|0X*) printf '%d' "$value" ;;
+              *) printf '%s' "$value" ;;
+            esac
+          }
+
+          stage() {
+            local source=$1 asset=$2 expected_abi=$3
+            local abis minsdk
+            abis=$(unzip -l "$source" | grep -o 'lib/[a-z0-9_-]*/' | sort -u \
+              | sed 's#lib/##; s#/$##')
+            # The expected list is built in a subshell: assigning and piping on one line would
+            # send the assignment into the pipeline and leave the variable unset.
+            local want
+            want=$(printf '%s' "$expected_abi" | tr ',' '\n' | sort -u)
+            minsdk=$(read_min_sdk "$source")
+            echo "$asset -> ABIs[$abis] minSdk[$minsdk]"
+            if [ "$abis" != "$want" ]; then
+              echo "::error::$asset expected ABIs [$want] but packaged [$abis]"
+              exit 1
+            fi
+            if [ "$minsdk" != "26" ]; then
+              echo "::error::$asset expected minSdk 26 but found ${minsdk:-not found}"
+              exit 1
+            fi
+            cp "$source" "dist/$asset"
+            ( cd dist && sha256sum "$asset" > "$asset.sha256" )
+          }
+
+          # The sources are the two APKs stashed by the build steps above, each renamed to the
+          # asset name only after its architecture has been verified.
+          stage dist/x86_64.apk DiPlay-x86_64.apk x86_64
+          stage dist/arm.apk DiPlay-arm64-armeabi.apk arm64-v8a,armeabi-v7a
+
+          echo "staged:"
+          ls -l dist
+
+      - name: Write release notes
+        run: |
+          cat > notes.md <<'NOTES'
+          ## Head-unit APKs
+
+          Two builds of the same source, differing only in CPU architecture.
+
+          | File | Architectures | Head units |
+          | --- | --- | --- |
+          | `DiPlay-arm64-armeabi.apk` | `arm64-v8a`, `armeabi-v7a` | BYD DiLink and other ARM seats |
+          | `DiPlay-x86_64.apk` | `x86_64` | GWM Lemon seats (Harman / iFlytek HiLife) on Intel |
+
+          Both require **Android 8.0 (API 26) or newer**.
+
+          ### Install the one that matches your car
+
+          Check the architecture first, otherwise the install is rejected or the app runs in
+          emulation. On the head unit, either look at the build properties, or pick the APK by
+          what the installer says after an install attempt:
+
+          ```
+          adb shell getprop ro.product.cpu.abi
+          ```
+
+          `arm64-v8a` or `armeabi-v7a` means the ARM APK. `x86_64` means the Intel APK.
+
+          ### Wireless behaviour on older firmware
+
+          Wi-Fi Direct needs Android 10 or newer, so on Android 8 and 9 only the built-in car
+          hotspot is offered. **Wired USB CarPlay works on every supported version and is the
+          recommended path on older head units.**
+
+          ### What these packages are not
+
+          These are **source-only** builds. They contain no accessory identity, so they will
+          install and run, but they cannot complete CarPlay pairing with an iPhone on their own.
+          A standalone car-test package requires runtime authentication assets that are
+          deliberately kept out of Git.
+
+          Verify a package before trusting it:
+
+          ```
+          sha256sum -c DiPlay-x86_64.apk.sha256
+          ```
+
+          ### Platform support
+
+          The CarPlay receive path is vendor-neutral. What differs per platform is navigation
+          output to a windshield HUD or instrument cluster, and whether vehicle data can be read
+          for the iPhone.
+
+          | Platform | Navigation output | Vehicle data |
+          | --- | --- | --- |
+          | BYD DiLink | HUD, instrument cluster, DiLink 5 receiver | Speed, gear, battery, range |
+          | GWM Lemon (Harman / iFlytek HiLife) | None, navigation stays in the projected window | Not read |
+          | Unrecognised head unit | None | Not read |
+
+          An unrecognised head unit is a normal outcome, not an error: CarPlay over USB still
+          works and the vendor settings stay hidden rather than appearing and doing nothing. The
+          detected platform id, firmware and ABI list are logged once per CarPlay session.
+          NOTES
+
+      - name: Publish to the GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag || github.ref_name }}
+          name: DiPlay ${{ github.event.inputs.tag || github.ref_name }} — Android 8 and GWM Lemon head units
+          body_path: notes.md
+          draft: false
+          prerelease: ${{ contains(github.event.inputs.tag || github.ref_name, '-') }}
+          fail_on_unmatched_files: true
+          files: |
+            dist/DiPlay-x86_64.apk
+            dist/DiPlay-x86_64.apk.sha256
+            dist/DiPlay-arm64-armeabi.apk
+            dist/DiPlay-arm64-armeabi.apk.sha256
